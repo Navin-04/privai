@@ -5,7 +5,8 @@ from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
 from presidio_anonymizer import AnonymizerEngine
 from presidio_analyzer.nlp_engine import SpacyNlpEngine
 
-nlp_engine = SpacyNlpEngine(models=[{"lang_code": "en", "model_name": "en_core_web_sm"}])
+nlp_engine = SpacyNlpEngine(models=[{"lang_code": "en", "model_name": "en_core_web_lg"}])
+
 
 registry = RecognizerRegistry()
 registry.load_predefined_recognizers()
