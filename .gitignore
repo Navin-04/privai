@@ -1,0 +1,28 @@
+# Ignore virtual environments and cache
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore local files and junk
+.DS_Store
+Thumbs.db
+.env
+
+# Ignore temporary and build files
+*.log
+*.bak
+*.sqlite3
+*.db
+temp/
+
+# Ignore images and pdfs
+*.png
+*.jpg
+*.jpeg
+*.pdf
+
+# Ignore IDE configs
+.vscode/
+.idea/

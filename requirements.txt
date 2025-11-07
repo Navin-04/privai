@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+streamlit
+opencv-python-headless
+pytesseract
+numpy
+Pillow
+presidio-analyzer
+presidio-anonymizer
+pymupdf
+spacy
+python-multipart
+requests
