@@ -1,5 +1,6 @@
 # api/utils.py
 import os
+import shutil
 import cv2
 import fitz  # PyMuPDF
 import numpy as np
@@ -8,8 +9,24 @@ from io import BytesIO
 import tempfile
 import pytesseract
 
-# Configure tesseract path (adjust if installed elsewhere)
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
+def configure_tesseract() -> None:
+    configured_path = os.getenv("TESSERACT_CMD")
+    if configured_path:
+        pytesseract.pytesseract.tesseract_cmd = configured_path
+        return
+
+    discovered_path = shutil.which("tesseract")
+    if discovered_path:
+        pytesseract.pytesseract.tesseract_cmd = discovered_path
+        return
+
+    windows_default = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    if os.path.exists(windows_default):
+        pytesseract.pytesseract.tesseract_cmd = windows_default
+
+
+configure_tesseract()
 
 # ---------------------------------------------------------------------
 # 🧠 OCR + Preprocessing Utilities

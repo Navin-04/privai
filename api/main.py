@@ -1,31 +1,48 @@
-from fastapi import FastAPI, File, UploadFile, Form
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-import tempfile, os, cv2, numpy as np, fitz
-from PIL import Image
+import os
 from io import BytesIO
 
-# 🧠 Import your anonymization functions
+import cv2
+import numpy as np
+from fastapi import FastAPI, File, Form, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, StreamingResponse
+from PIL import Image
+
 from api.anonymizer import anonymize_image, anonymize_text
+from api.utils import images_to_pdf, pdf_to_images
 
 app = FastAPI(title="PrivAI - PII Anonymization API", version="1.0")
 
-# 🔓 Allow connections from frontend (Streamlit or browser)
+
+def _allowed_origins() -> list[str]:
+    raw_origins = os.getenv(
+        "CORS_ALLOW_ORIGINS",
+        "http://localhost:8501,http://127.0.0.1:8501",
+    )
+    origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    return origins or ["*"]
+
+
+cors_origins = _allowed_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # you can restrict this later
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=cors_origins != ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 🏠 Root route
+
 @app.get("/", tags=["Root"])
 async def root():
     return {"message": "Welcome to PrivAI Backend 👁‍🗨", "status": "active"}
 
 
-# 🧾 Text anonymization endpoint
+@app.get("/health", tags=["Root"])
+async def health():
+    return {"status": "ok"}
+
+
 @app.post("/anonymize/text", tags=["PII Processing"])
 async def anonymize_text_api(text: str = Form(...)):
     """
@@ -35,7 +52,6 @@ async def anonymize_text_api(text: str = Form(...)):
     return {"original_text": text, "anonymized_text": anonymized_output}
 
 
-# 🖼️ Image anonymization endpoint
 @app.post("/anonymize/image", tags=["PII Processing"])
 async def anonymize_image_api(file: UploadFile = File(...)):
     """
@@ -49,16 +65,22 @@ async def anonymize_image_api(file: UploadFile = File(...)):
         anonymized = anonymize_image(image_bgr)
         anonymized_rgb = cv2.cvtColor(anonymized, cv2.COLOR_BGR2RGB)
 
-        output_path = os.path.join(tempfile.gettempdir(), "anonymized_image.png")
-        Image.fromarray(anonymized_rgb).save(output_path)
+        output = BytesIO()
+        Image.fromarray(anonymized_rgb).save(output, format="PNG")
+        output.seek(0)
 
-        return FileResponse(output_path, media_type="image/png", filename="anonymized_image.png")
+        return StreamingResponse(
+            output,
+            media_type="image/png",
+            headers={
+                "Content-Disposition": 'attachment; filename="anonymized_image.png"'
+            },
+        )
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-# 📄 PDF anonymization endpoint
 @app.post("/anonymize/pdf", tags=["PII Processing"])
 async def anonymize_pdf_api(file: UploadFile = File(...)):
     """
@@ -66,27 +88,27 @@ async def anonymize_pdf_api(file: UploadFile = File(...)):
     """
     try:
         contents = await file.read()
-        temp_dir = tempfile.mkdtemp()
-        input_pdf = os.path.join(temp_dir, file.filename)
+        pages = pdf_to_images(contents)
+        if not pages:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Uploaded PDF does not contain any pages."},
+            )
 
-        with open(input_pdf, "wb") as f:
-            f.write(contents)
-
-        doc = fitz.open(input_pdf)
         output_images = []
+        for page in pages:
+            page.setflags(write=1)
+            anon_img = anonymize_image(page)
+            output_images.append(cv2.cvtColor(anon_img, cv2.COLOR_BGR2RGB))
 
-        for i, page in enumerate(doc):
-            pix = page.get_pixmap(dpi=150)
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            img_np = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-            img_np.setflags(write=1)
-            anon_img = anonymize_image(img_np)
-            output_images.append(Image.fromarray(cv2.cvtColor(anon_img, cv2.COLOR_BGR2RGB)))
-
-        output_pdf_path = os.path.join(tempfile.gettempdir(), "anonymized_output.pdf")
-        output_images[0].save(output_pdf_path, save_all=True, append_images=output_images[1:])
-
-        return FileResponse(output_pdf_path, media_type="application/pdf", filename="anonymized_output.pdf")
+        output_pdf = images_to_pdf(output_images)
+        return StreamingResponse(
+            output_pdf,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": 'attachment; filename="anonymized_output.pdf"'
+            },
+        )
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
